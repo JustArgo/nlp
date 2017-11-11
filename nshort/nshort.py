@@ -11,8 +11,12 @@
 		传参过程
 
 '''
+import math
+
 #定义全局变量
 MAX_FREQUENCY = 25146057
+dTemp = 1 / MAX_FREQUENCY + 0.00001
+dSmoothPara = 0.1
 
 #判断一个字是否是中文
 def is_chinese(uchar):
@@ -34,7 +38,7 @@ def getWordFreq2(word):
 		while i < lineLength:
 			if is_chinese(line[i]):
 				if i + dicLength - 1 < lineLength:
-					print('curWord-->'+line[i:i+dicLength])
+					#print('curWord-->'+line[i:i+dicLength])
 					if line[i:i+dicLength] == word:
 						if word not in wordDict:
 							wordCount = 1
@@ -50,7 +54,7 @@ def getWordFreq2(word):
 	return wordCount
 
 #加载一元词频字典
-def loadDictionary(fileName):
+def loadOneGramDictionary(fileName):
 	fopen = open(fileName,encoding="UTF-8")
 	wordFreqDict = {}
 	for line in fopen.readlines():
@@ -59,136 +63,60 @@ def loadDictionary(fileName):
 	fopen.close()
 	return wordFreqDict
 	
-	
-#计算 一元词频 内部算法  
-#暂时不用自己计算词频 词频直接从字典文件加载
-def getWordFreq():
-	
-	dictArr = loadDictionary('CoreNatureDictionary.txt');
-	'''
-	wordDict = {}
-	i = 0
-	tagSet = set()
-	while i < listLength:
-		temp = i
-		for dic in dictArr:
-			print(wordList[i],dic[0][0])
-			if wordList[i] == dic[0][0]:
-				print('=======')
-				dicLength = len(dic[0])
-				print(dicLength)
-				if i + dicLength - 1 < listLength:
-					print(wordList[i:i+dicLength])
-					if ''.join(wordList[i:i+dicLength]) == dic[0]:
-						if dic[0] not in wordDict:
-							wordDict[dic[0]] = getWordFreq2(dic[0])
-						tagSet.add(i+dicLength-1)
-						i += dicLength
-						break
-					else:
-						i += 1
-				else:
-					i += 1
-		if temp == i:
-			i += 1
-	set1 = sorted(tagSet)
-	'''
-	return dictArr
-	
-#计算 一元词频
-def prepareFrequency():
-	'''
-	fopen = open('sanguo.txt',encoding="UTF-8")
-	#计算每个汉字的词频,计算每个词语的词频
-	wordDict = {}
-	wordDict2 = {}
-	wordArr = []
+#加载二元词频字典
+def loadTwoGramDictionary(fileName):
+	fopen = open(fileName,encoding="UTF-8")
+	wordFreqDict = {}
 	for line in fopen.readlines():
-		wordArr.append(line)
-		for i in range(len(line)):
-			if is_chinese(line[i]):
-				
-				if line[i] not in wordDict:
-					wordDict[line[i]] = 1
-				else:
-					wordDict[line[i]] += 1
-	'''			
-			
+		wordList = line.strip().split()
+		wordFreqDict[wordList[0]] = int(wordList[1])
+	fopen.close()
+	return wordFreqDict	
 	
-	wordDict2 = getWordFreq() 
-	return wordDict2
-	
-	
-	#一元词网
-	'''
-		循环某个句子
-		while line[i] 有匹配:
-			dict[line[i]].链表.append()
-			一元词网
-			
-			重新分配顺序的时候  记住自己的下家是谁  乔下面有两个 所以有两个下家
-			还没算概率
-			
-			关键是二元词频怎么计算,直接拿来用？
-			一元词组@后面的东西有多少
-			
-			
-			
-			
-	'''
-	#二元词网
-	'''
-		
-		会见@#人名#的概率
-		
-		对一元词网的每一个
-		
-		重新分配之后的链条 结合二元词网 进行计算
-		
-		endList[]
-		for to in toList:
-			for from in fromList:
-				dict = {}
-				dict['to'] = to
-				dict['from'] = from
-				dict['weight'] = weight(to,from)
-				
-		计算最优路径
-		
-		
-		
-	'''
-	
-#计算 一元词网: 返回字典	
+#计算 一元词网: 返回列表	
 def calcOneGramWordNet(content,oneGramWordDict):
 	wordNet = {}
+	index = 0
 	for i in range(len(content)):
 		j = i+1
 		while ''.join(content[i:j]) in oneGramWordDict and j<=len(content):
-			print('content->'+content[i:j])
 			if content[i] not in wordNet:
-				wordNet[content[i]] = []
-			wordNet[content[i]].append(content[i:j])
+				wordNet[content[i]] = {'index':index,'list':[]}
+				index += 1
+			wordNet[content[i]]['list'].append(content[i:j])
 			j += 1
-	return wordNet	
+	return sorted(wordNet.items(),key=lambda k:k[1]['index'])	
 		
-#计算 二元词频权重
-def calcWeight(fromWord,toWord):
-	return 1.0		
+#计算权重
+def calcWeight(fromWord,toWord,oneGramWordFreq,twoGramWordFreq):
+	frequency = 1
+	if fromWord in oneGramWordFreq:
+		frequency = oneGramWordFreq[fromWord]
+	if frequency == 0:
+		frequency = 1
+	nTwoWordFreq = 1
+	if fromWord+"@"+toWord in twoGramWordFreq:
+		nTwoWordFreq = twoGramWordFreq[fromWord+"@"+toWord]
+	weight = math.log(dSmoothPara * frequency / (MAX_FREQUENCY) + (1-dSmoothPara) * ((1-dTemp) * nTwoWordFreq / frequency + dTemp))
+	if weight < 0:
+		weight = -weight
+	return weight	
 		
 #计算 二元词网
-def calcTwoGramWordNet(wordNet):
+def calcTwoGramWordNet(wordNet,oneGramWordFreq,twoGramWordFreq):
 	cur = 0
 	dictList = []
 	wordList = []
 	indexDict = {}
 	index = 0
+	originList = []
 	for word in wordNet:
-		print(wordNet[word])
-		wordList.append(wordNet[word])
+		wordList.append(word[1]['list'])
+		for singleWord in word[1]['list']:
+			originList.append(singleWord)
 		indexDict[index]  = cur
 		index += 1
-		cur += len(wordNet[word])
+		cur += len(word[1]['list'])
 	index = 0
 	for word in wordNet:
 		for i in range(indexDict[index],indexDict[index]+len(wordList[index])):
@@ -202,44 +130,72 @@ def calcTwoGramWordNet(wordNet):
 				toWord = wordList[index + tmpI][tmpJ-1]
 				dic['from'] = i
 				dic['to'] = j
-				dic['weight'] = calcWeight(fromWord,toWord)
+				dic['weight'] = calcWeight(fromWord,toWord,oneGramWordFreq,twoGramWordFreq)
 				dic['word'] = fromWord+"@"+toWord
 				dictList.append(dic)
 		index += 1
-	return dictList
+	return dictList,originList
 	
 #返回要分词的内容，只返回一行
 def getContent():
-	return "石国祥会见乔布斯说苹果是世界上最好的手机"
+	return "石国祥会见乔布斯说苹果是世界上最好用的手机。"
+	
+#找到路径
+def findPath(dic,fromNum,toNum):
+	#print(fromNum,toNum)
+	path = []
+	if fromNum==toNum:
+		return fromNum
+	if fromNum==toNum-1:
+		return toNum
+		
+	
+	middleNum = dic[str(fromNum)+"@"+str(toNum)]
+	left = findPath(dic,fromNum,middleNum)
+	if type(left).__name__ == 'list':
+		path = path + left
+	else:
+		path.append(left)
+	path.append(toNum)
+	return path
 	
 #根据二元词网计算最短路径
 def finalCalc(twoGramWordNet):
 	# 1 找出所有的点
 	# 2 用floyd算法计算最短路径
 	pointSet = set()
-	print(twoGramWordNet)
+	MAX_TO = 0
+	
 	for dic in twoGramWordNet:
 		pointSet.add(dic['from'])
 		pointSet.add(dic['to'])
+		if dic['to'] > MAX_TO:
+			MAX_TO = dic['to']
+	
+	#print(twoGramWordNet)
 	
 	minValueDict = {}
 	pathDict = {}
-	for point1 in pointSet:
-		for point2 in pointSet:
-			if point1 != point2:
+	
+	for point1 in sorted(pointSet):
+		for point2 in sorted(pointSet):
+			minValueDict[str(point1)+"@"+str(point2)] = 9999
+			pathDict[str(point1)+"@"+str(point2)] = -1
+	
+	for point1 in sorted(pointSet):
+		for point2 in sorted(pointSet):
+			if point1 != point2 and point2 > point1:
 				for dic in twoGramWordNet:
 					if dic['from'] == point1 and dic['to'] == point2:
 						minValueDict[str(point1)+"@"+str(point2)] = dic['weight']
 						pathDict[str(point1)+"@"+str(point2)] = -1
-				if str(point1)+"@"+str(point2) not in minValueDict:
-					minValueDict[str(point1)+"@"+str(point2)] = 9999
-					pathDict[str(point1)+"@"+str(point2)] = -1
+						
 				
 	
-	for pointTmp in pointSet:
-		for point1 in pointSet:
-			for point2 in pointSet:
-				if point1 != point2 and point1 != pointTmp and point2 != pointTmp:
+	for pointTmp in sorted(pointSet):
+		for point1 in sorted(pointSet):
+			for point2 in sorted(pointSet):
+				if point1 != point2 and point2 > point1:
 					pointStr = str(point1)+"@"+str(point2)
 					point1ToTmp = str(point1)+"@"+str(pointTmp)
 					pointTmpTo2 = str(pointTmp)+"@"+str(point2)
@@ -249,28 +205,78 @@ def finalCalc(twoGramWordNet):
 	
 	
 	#处理字典
+	tmpDict = pathDict.copy()
+	#for key in tmpDict:
+	#	if pathDict[key] == -1:
+	#		del pathDict[key]
+			
+	return findPath(pathDict,0,MAX_TO)
+	'''
+		0@24 = 22
+		left = calc(0,22)
+		right = calc(22,24)
+		
+	'''
 	
+#过滤二元词网
+def filterTwoGramWordNet(twoGramWordNet):
+	toSet = set()
+	for dic in twoGramWordNet:
+		toSet.add(dic['to'])
 	
-	return pathDict
+	weightDic = {}
+	for to in toSet:
+		weightDic[to] = 9999
+		
+	newTwoGramWordNet = []
+	
+	for to in toSet:
+		for dic in twoGramWordNet:
+			if dic['to'] == to and dic['weight'] < weightDic[to]:
+				weightDic[to] = dic['weight']
+	
+	for to in toSet:
+		for dic in twoGramWordNet:
+			if dic['to']==to and dic['weight'] == weightDic[to]:
+				newTwoGramWordNet.append(dic)
+	
+	return newTwoGramWordNet
+	
+#最新的算权重的办法
+def calcPath(twoGramWordNet):
+	return None
 	
 #nshort算法	
 def nshort():
 	
 	'''
 		一元词频
-		#二元词频
+		二元词频
 		一元词网
 		二元词网
 	'''
-	oneGramWordDict = prepareFrequency()
-	#print('一元词频------')
-	#print(oneGramWordDict)
+	oneGramWordDict = loadOneGramDictionary('CoreNatureDictionary.txt');
+	print('一元词频------')
+	print(oneGramWordDict)
+	twoGramWordDict = loadTwoGramDictionary('CoreNatureDictionary.ngram.txt');
+	#print('二元词频------')
+	#print(twoGramWordDict)
+	
 	oneGramWordNet = calcOneGramWordNet(getContent(),oneGramWordDict)
 	#print('一元词网------')
 	#print(oneGramWordNet)
-	twoGramWordNet = calcTwoGramWordNet(oneGramWordNet)
+	
+	twoGramWordNet,originList = calcTwoGramWordNet(oneGramWordNet,oneGramWordDict,twoGramWordDict)
+	#twoGramWordNet = filterTwoGramWordNet(twoGramWordNet)
+	#for dic in twoGramWordNet:
+	#	print(dic['from'],dic['to'])
 	path = finalCalc(twoGramWordNet)
-	return path
+	#path = calcPath(twoGramWordNet)
+	print(originList[0],end=" ")
+	for index in path:
+		print(originList[index],end=" ")
+	print("")
+	#return path
 	
 	
 	
